@@ -31,7 +31,8 @@ The code in this project is licensed under the MIT license - see LICENSE for det
 ## Links
 
  * [System Management Bus (SMBus) Specification, version 3.0](http://www.smbus.org/specs/SMBus_3_0_20141220.pdf)
-
+ * [I2C-bus Specification and User Manual](https://www.nxp.com/docs/en/user-guide/UM10204.pdf)
+ 
 ## Acknowledgements
 
 
