@@ -25,17 +25,25 @@
 #define ACK_VAL        0x0      // I2C ack value
 #define NACK_VAL       0x1      // I2C nack value
 
-#define REG_COMMAND   0x80
-#define REG_CONTROL   0x00
-#define REG_TIMING    0x01
-#define REG_ID        0x0A
-#define REG_DATA0LOW  0x0C
-#define REG_DATA0HIGH 0x0D
-#define REG_DATA1LOW  0x0E
-#define REG_DATA1HIGH 0x0F
+// Register addresses
+#define REG_CONTROL         0x00
+#define REG_TIMING          0x01
+#define REG_THRESHLOWLOW    0x02
+#define REG_THRESHLOWHIGH   0x03
+#define REG_THRESHHIGHLOW   0x04
+#define REG_THRESHHIGHHIGH  0x05
+#define REG_INTERRUPT       0x06
+#define REG_ID              0x0A
+#define REG_DATA0LOW        0x0C
+#define REG_DATA0HIGH       0x0D
+#define REG_DATA1LOW        0x0E
+#define REG_DATA1HIGH       0x0F
 
-#define SMB_BLOCK 0x10
-#define SMB_WORD 0x20
+// The following values are bitwise ORed with register addresses to create a command value
+#define SMB_BLOCK           0x10  // Transaction to use Block Write/Read protocol
+#define SMB_WORD            0x20  // Transaction to use Word Write/Read protocol
+#define SMB_CLEAR           0x40  // Clear any pending interrupt (self-clearing)
+#define SMB_COMMAND         0x80  // Select command register
 
 static void i2c_master_init(void)
 {
@@ -176,22 +184,22 @@ void tsl2561_task(void * pvParameter)
     uint8_t address = CONFIG_TSL2561_I2C_ADDRESS;
 
     uint8_t id = 0;
-    read_byte(i2c_num, address, REG_ID | REG_COMMAND, &id);
+    read_byte(i2c_num, address, REG_ID | SMB_COMMAND, &id);
     printf("ID: 0x%02x\n", id);
 
     uint8_t powered = 0;
-    //read_byte(i2c_num, address, REG_CONTROL | REG_COMMAND, &powered);
+    //read_byte(i2c_num, address, REG_CONTROL | SMB_COMMAND, &powered);
     //printf("Powered: 0x%02x\n", powered);
 
     // Power on sensor by writing 0x03 to Control register (via Command register)
-    write_byte_data(i2c_num, address, REG_CONTROL | REG_COMMAND, 0x03);
+    write_byte_data(i2c_num, address, REG_CONTROL | SMB_COMMAND, 0x03);
 
-    //read_byte(i2c_num, address, REG_CONTROL | REG_COMMAND, &powered);
+    //read_byte(i2c_num, address, REG_CONTROL | SMB_COMMAND, &powered);
     receive_byte(i2c_num, address, &powered);
     printf("Powered: 0x%02x\n", powered & 0x03);
 
     // Set integration time to 402ms (0x02) via timing register
-    write_byte_data(i2c_num, address, REG_TIMING | REG_COMMAND, 0x02);
+    write_byte_data(i2c_num, address, REG_TIMING | SMB_COMMAND, 0x02);
 
     // Wait at least 0.5 seconds
     vTaskDelay(500 / portTICK_RATE_MS);
@@ -200,18 +208,18 @@ void tsl2561_task(void * pvParameter)
     {
         // Read DATA0LOW and DATA0HIGH together
         //uint8_t data0[2] = {0};
-        //read_block_data(i2c_num, address, REG_DATA0LOW | REG_COMMAND, data0, sizeof(data0));
+        //read_block_data(i2c_num, address, REG_DATA0LOW | SMB_COMMAND, data0, sizeof(data0));
         uint8_t data0[2] = {0};
-        read_word(i2c_num, address, REG_DATA0LOW | REG_COMMAND | SMB_WORD, data0);
-        //read_word(i2c_num, address, REG_DATA0LOW | REG_COMMAND, data0);
-        //read_byte(i2c_num, address, REG_DATA0LOW | REG_COMMAND, &data0[0]);
-        //read_byte(i2c_num, address, REG_DATA0HIGH | REG_COMMAND, &data0[1]);
+        read_word(i2c_num, address, REG_DATA0LOW | SMB_COMMAND | SMB_WORD, data0);
+        //read_word(i2c_num, address, REG_DATA0LOW | SMB_COMMAND, data0);
+        //read_byte(i2c_num, address, REG_DATA0LOW | SMB_COMMAND, &data0[0]);
+        //read_byte(i2c_num, address, REG_DATA0HIGH | SMB_COMMAND, &data0[1]);
 
         uint8_t data1[2] = {0};
-        read_word(i2c_num, address, REG_DATA1LOW | REG_COMMAND | SMB_WORD, data1);
-        //read_word(i2c_num, address, REG_DATA1LOW | REG_COMMAND, data1);
-        //read_byte(i2c_num, address, REG_DATA1LOW | REG_COMMAND, &data1[0]);
-        //read_byte(i2c_num, address, REG_DATA1HIGH | REG_COMMAND, &data1[1]);
+        read_word(i2c_num, address, REG_DATA1LOW | SMB_COMMAND | SMB_WORD, data1);
+        //read_word(i2c_num, address, REG_DATA1LOW | SMB_COMMAND, data1);
+        //read_byte(i2c_num, address, REG_DATA1LOW | SMB_COMMAND, &data1[0]);
+        //read_byte(i2c_num, address, REG_DATA1HIGH | SMB_COMMAND, &data1[1]);
 
         uint16_t ch0 = (data0[1] << 8) + data0[0];
         uint16_t ch1 = (data1[1] << 8) + data1[0];
@@ -243,59 +251,107 @@ void test_smbus_task(void * pvParameter)
 //    ESP_ERROR_CHECK(smbus_quick(smbus_info, false));
 
     // Send Byte
-    ESP_ERROR_CHECK(smbus_send_byte(smbus_info, REG_COMMAND));
+    ESP_ERROR_CHECK(smbus_send_byte(smbus_info, SMB_COMMAND));
     ESP_ERROR_CHECK(smbus_send_byte(smbus_info, 0x03));  // power up
 
     // Receive Byte
     uint8_t status = 0;
-    ESP_ERROR_CHECK(smbus_send_byte(smbus_info, REG_COMMAND));
+    ESP_ERROR_CHECK(smbus_send_byte(smbus_info, SMB_COMMAND));
     ESP_ERROR_CHECK(smbus_receive_byte(smbus_info, &status));
     ESP_LOGI(TAG, "status 0x%02x (expect 0x03)", status);
 
     // Write Byte
-    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | REG_COMMAND, 0x00));  // power down
+    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | SMB_COMMAND, 0x00));  // power down
     ESP_ERROR_CHECK(smbus_receive_byte(smbus_info, &status));
     ESP_LOGI(TAG, "status 0x%02x (expect 0x00)", status);
-    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | REG_COMMAND, 0x03));  // power up
+    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | SMB_COMMAND, 0x03));  // power up
 
     // Read Byte
     uint8_t timing = 0;
-    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_TIMING | REG_COMMAND, 0x0d));
-    ESP_ERROR_CHECK(smbus_read_byte(smbus_info, REG_TIMING | REG_COMMAND, &timing));
-    ESP_LOGI(TAG, "timing 0x%02x (expect 0xd0)", timing);
+    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_TIMING | SMB_COMMAND, 0x0d));
+    ESP_ERROR_CHECK(smbus_read_byte(smbus_info, REG_TIMING | SMB_COMMAND, &timing));
+    ESP_LOGI(TAG, "timing 0x%02x (expect 0x0d)", timing);
 
     // Write Word
-    ESP_ERROR_CHECK(smbus_write_word(smbus_info, REG_CONTROL | REG_COMMAND | SMB_WORD, 0x1102));
-    ESP_ERROR_CHECK(smbus_read_byte(smbus_info, REG_CONTROL | REG_COMMAND, &status));
-    ESP_ERROR_CHECK(smbus_read_byte(smbus_info, REG_TIMING | REG_COMMAND, &timing));
+    ESP_ERROR_CHECK(smbus_write_word(smbus_info, REG_CONTROL | SMB_COMMAND | SMB_WORD, 0x1102));
+    ESP_ERROR_CHECK(smbus_read_byte(smbus_info, REG_CONTROL | SMB_COMMAND, &status));
+    ESP_ERROR_CHECK(smbus_read_byte(smbus_info, REG_TIMING | SMB_COMMAND, &timing));
     ESP_LOGI(TAG, "status 0x%02x (expect 0x02)", status);
     ESP_LOGI(TAG, "timing 0x%02x (expect 0x11)", timing);
 
     // Read Word
-    ESP_ERROR_CHECK(smbus_write_word(smbus_info, REG_CONTROL | REG_COMMAND | SMB_WORD, 0x0103));
+    ESP_ERROR_CHECK(smbus_write_word(smbus_info, REG_CONTROL | SMB_COMMAND | SMB_WORD, 0x0103));
     uint16_t word = 0;
-    ESP_ERROR_CHECK(smbus_read_word(smbus_info, REG_CONTROL | REG_COMMAND | SMB_WORD, &word));
+    ESP_ERROR_CHECK(smbus_read_word(smbus_info, REG_CONTROL | SMB_COMMAND | SMB_WORD, &word));
     ESP_LOGI(TAG, "word[0] 0x%02x (expect 0x03)", word & 0xff);
     ESP_LOGI(TAG, "word[1] 0x%02x (expect 0x01)", (word >> 8) & 0xff);
 
+    // Block Write
+    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | SMB_COMMAND, 0x00));  // power down
+    uint8_t block_write_data[6] = { 0x03, 0x02, 0xAA, 0x55, 0x00, 0x0F };
+    ESP_ERROR_CHECK(smbus_write_block(smbus_info, REG_CONTROL | SMB_COMMAND | SMB_BLOCK, block_write_data, 6));
+    uint8_t block_write_actual_data[6] = { 0 };
+    for (size_t i = 0; i < 6; ++i)
+    {
+        ESP_ERROR_CHECK(smbus_read_byte(smbus_info, i | SMB_COMMAND, &block_write_actual_data[i]));
+        ESP_LOGI(TAG, "actual[%d] 0x%02x (expect 0x%02x)", i, block_write_actual_data[i], block_write_data[i]);
+    }
+
+    // Block Read - only supported by the ADC registers with special command 0x9B
+//    uint8_t block_read_data[4] = { 0xC2, 0x17, 0xE3, 0xFE };
+//    uint8_t block_read_actual_data[4] = { 0 };
+//    ESP_ERROR_CHECK(smbus_write_block(smbus_info, REG_THRESHLOWLOW | SMB_COMMAND | SMB_BLOCK, block_read_data, 4));
+//    ESP_ERROR_CHECK(smbus_read_block(smbus_info, REG_THRESHLOWLOW | SMB_COMMAND | SMB_BLOCK, block_read_actual_data, 4));
+//    for (size_t i = 0; i < 4; ++i)
+//    {
+//        ESP_LOGI(TAG, "actual[%d] 0x%02x (expect 0x%02x)", i, block_read_actual_data[i], block_read_data[i]);
+//    }
+
+    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | SMB_COMMAND, 0x03));  // power up
+    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_TIMING | SMB_COMMAND, 0x02));   // 402ms integration time
+
+    vTaskDelay(500 / portTICK_RATE_MS);
+
+    uint8_t block_read_actual_data[4] = { 0 };
+    uint8_t len = 4;
+    ESP_ERROR_CHECK(smbus_read_block(smbus_info, 0x9B, block_read_actual_data, &len));
+    for (size_t i = 0; i < len; ++i)
+    {
+        ESP_LOGI(TAG, "actual[%d] 0x%02x", i, block_read_actual_data[i]);
+    }
+
+    // Test sensor reading
     while (1)
     {
-        ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | REG_COMMAND, 0x03));  // power up
-        ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_TIMING | REG_COMMAND, 0x02));   // 402ms integration time
+        ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | SMB_COMMAND, 0x03));  // power up
+        ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_TIMING | SMB_COMMAND, 0x02));   // 402ms integration time
 
         vTaskDelay(500 / portTICK_RATE_MS);
+
+        uint8_t block_read_actual_data[4] = { 0 };
+        uint8_t len = 4;
+        ESP_ERROR_CHECK(smbus_read_block(smbus_info, 0x9B, block_read_actual_data, &len));
+        for (size_t i = 0; i < len; ++i)
+        {
+            ESP_LOGI(TAG, "actual[%d] 0x%02x", i, block_read_actual_data[i]);
+        }
 
         uint16_t ch0 = 0;
         uint16_t ch1 = 0;
 
-        ESP_ERROR_CHECK(smbus_read_word(smbus_info, REG_DATA0LOW | REG_COMMAND | SMB_WORD, &ch0));
-        ESP_ERROR_CHECK(smbus_read_word(smbus_info, REG_DATA1LOW | REG_COMMAND | SMB_WORD, &ch1));
+        ESP_ERROR_CHECK(smbus_read_word(smbus_info, REG_DATA0LOW | SMB_COMMAND | SMB_WORD, &ch0));
+        ESP_ERROR_CHECK(smbus_read_word(smbus_info, REG_DATA1LOW | SMB_COMMAND | SMB_WORD, &ch1));
+
+        ESP_LOGD(TAG, "DATA0LOW  0x%02x", ch0 & 0xff);
+        ESP_LOGD(TAG, "DATA0HIGH 0x%02x", (ch0 >> 8) & 0xff);
+        ESP_LOGD(TAG, "DATA1LOW  0x%02x", ch1 & 0xff);
+        ESP_LOGD(TAG, "DATA1HIGH 0x%02x", (ch1 >> 8) & 0xff);
 
         printf("Full spectrum: %d\n", ch0);
         printf("Infrared:      %d\n", ch1);
         printf("Visible:       %d\n\n", ch0 - ch1);
 
-        ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | REG_COMMAND, 0x00));  // power down
+        ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | SMB_COMMAND, 0x00));  // power down
         vTaskDelay(2000 / portTICK_RATE_MS);
     }
 }

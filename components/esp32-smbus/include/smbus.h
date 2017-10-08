@@ -153,6 +153,28 @@ esp_err_t smbus_read_byte(const smbus_info_t * smbus_info, uint8_t command, uint
  */
 esp_err_t smbus_read_word(const smbus_info_t * smbus_info, uint8_t command, uint16_t * data);
 
+/**
+ * @brief Write up to 255 bytes to a slave device with a command code.
+ *        The first byte in the data array is transmitted first.
+ * @param[in] smbus_info Pointer to initialised SMBus info instance.
+ * @param[in] command Device-specific command byte.
+ * @param[in] data Data bytes to send to slave.
+ * @param[in] len Number of bytes to send to slave.
+ * @return ESP_OK if successful, ESP_FAIL or ESP_ERR_* if an error occurred.
+ */
+esp_err_t smbus_write_block(const smbus_info_t * smbus_info, uint8_t command, uint8_t * data, uint8_t len);
+
+/**
+ * @brief Read up to 255 bytes from a slave device with a command code.
+ *        The first byte received is placed in the first array location.
+ * @param[in] smbus_info Pointer to initialised SMBus info instance.
+ * @param[in] command Device-specific command byte.
+ * @param[out] data Data bytes received from slave.
+ * @param[in/out] len Size of data array, and number of bytes actually received.
+ * @return ESP_OK if successful, ESP_FAIL or ESP_ERR_* if an error occurred.
+ */
+esp_err_t smbus_read_block(const smbus_info_t * smbus_info, uint8_t command, uint8_t * data, uint8_t * len);
+
 
 #ifdef __cplusplus
 }
