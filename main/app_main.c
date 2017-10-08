@@ -7,6 +7,8 @@
 #include "esp_log.h"
 #include "sdkconfig.h"
 
+#include "smbus.h"
+
 #define TAG "tsl2561"
 
 #define BLUE_LED_GPIO (GPIO_NUM_2)
@@ -170,9 +172,6 @@ void tsl2561_task(void * pvParameter)
 {
     i2c_master_init();
 
-    gpio_pad_select_gpio(BLUE_LED_GPIO);
-    gpio_set_direction(BLUE_LED_GPIO, GPIO_MODE_OUTPUT);
-
     i2c_port_t i2c_num = I2C_MASTER_NUM;
     uint8_t address = CONFIG_TSL2561_I2C_ADDRESS;
 
@@ -228,8 +227,86 @@ void tsl2561_task(void * pvParameter)
 	}
 }
 
+void test_smbus_task(void * pvParameter)
+{
+    i2c_master_init();
+
+    i2c_port_t i2c_num = I2C_MASTER_NUM;
+    i2c_address_t address = CONFIG_TSL2561_I2C_ADDRESS;
+
+    smbus_info_t * smbus_info = smbus_malloc();
+    smbus_init(smbus_info, i2c_num, address);
+    smbus_set_timeout(smbus_info, 1000 / portTICK_RATE_MS);
+
+    // SMBus Quick Commands:
+//    ESP_ERROR_CHECK(smbus_quick(smbus_info, true));
+//    ESP_ERROR_CHECK(smbus_quick(smbus_info, false));
+
+    // Send Byte
+    ESP_ERROR_CHECK(smbus_send_byte(smbus_info, REG_COMMAND));
+    ESP_ERROR_CHECK(smbus_send_byte(smbus_info, 0x03));  // power up
+
+    // Receive Byte
+    uint8_t status = 0;
+    ESP_ERROR_CHECK(smbus_send_byte(smbus_info, REG_COMMAND));
+    ESP_ERROR_CHECK(smbus_receive_byte(smbus_info, &status));
+    ESP_LOGI(TAG, "status 0x%02x (expect 0x03)", status);
+
+    // Write Byte
+    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | REG_COMMAND, 0x00));  // power down
+    ESP_ERROR_CHECK(smbus_receive_byte(smbus_info, &status));
+    ESP_LOGI(TAG, "status 0x%02x (expect 0x00)", status);
+    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | REG_COMMAND, 0x03));  // power up
+
+    // Read Byte
+    uint8_t timing = 0;
+    ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_TIMING | REG_COMMAND, 0x0d));
+    ESP_ERROR_CHECK(smbus_read_byte(smbus_info, REG_TIMING | REG_COMMAND, &timing));
+    ESP_LOGI(TAG, "timing 0x%02x (expect 0xd0)", timing);
+
+    // Write Word
+    ESP_ERROR_CHECK(smbus_write_word(smbus_info, REG_CONTROL | REG_COMMAND | SMB_WORD, 0x1102));
+    ESP_ERROR_CHECK(smbus_read_byte(smbus_info, REG_CONTROL | REG_COMMAND, &status));
+    ESP_ERROR_CHECK(smbus_read_byte(smbus_info, REG_TIMING | REG_COMMAND, &timing));
+    ESP_LOGI(TAG, "status 0x%02x (expect 0x02)", status);
+    ESP_LOGI(TAG, "timing 0x%02x (expect 0x11)", timing);
+
+    // Read Word
+    ESP_ERROR_CHECK(smbus_write_word(smbus_info, REG_CONTROL | REG_COMMAND | SMB_WORD, 0x0103));
+    uint16_t word = 0;
+    ESP_ERROR_CHECK(smbus_read_word(smbus_info, REG_CONTROL | REG_COMMAND | SMB_WORD, &word));
+    ESP_LOGI(TAG, "word[0] 0x%02x (expect 0x03)", word & 0xff);
+    ESP_LOGI(TAG, "word[1] 0x%02x (expect 0x01)", (word >> 8) & 0xff);
+
+    while (1)
+    {
+        ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | REG_COMMAND, 0x03));  // power up
+        ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_TIMING | REG_COMMAND, 0x02));   // 402ms integration time
+
+        vTaskDelay(500 / portTICK_RATE_MS);
+
+        uint16_t ch0 = 0;
+        uint16_t ch1 = 0;
+
+        ESP_ERROR_CHECK(smbus_read_word(smbus_info, REG_DATA0LOW | REG_COMMAND | SMB_WORD, &ch0));
+        ESP_ERROR_CHECK(smbus_read_word(smbus_info, REG_DATA1LOW | REG_COMMAND | SMB_WORD, &ch1));
+
+        printf("Full spectrum: %d\n", ch0);
+        printf("Infrared:      %d\n", ch1);
+        printf("Visible:       %d\n\n", ch0 - ch1);
+
+        ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | REG_COMMAND, 0x00));  // power down
+        vTaskDelay(2000 / portTICK_RATE_MS);
+    }
+}
+
 void app_main()
 {
-	xTaskCreate(&tsl2561_task, "tsl2561_task", 2048, NULL, 5, NULL);
+    gpio_pad_select_gpio(BLUE_LED_GPIO);
+    gpio_set_direction(BLUE_LED_GPIO, GPIO_MODE_OUTPUT);
+
+//	xTaskCreate(&tsl2561_task, "tsl2561_task", 2048, NULL, 5, NULL);
+    xTaskCreate(&test_smbus_task, "test_smbus_task", 2048, NULL, 5, NULL);
+
 }
 
