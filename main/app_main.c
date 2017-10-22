@@ -37,6 +37,7 @@
 #include "sdkconfig.h"
 
 #include "smbus.h"
+#include "tsl2561.h"
 
 #define TAG "tsl2561"
 
@@ -91,7 +92,7 @@ static void i2c_master_init(void)
                        I2C_MASTER_TX_BUF_LEN, 0);
 }
 
-void tsl2561_task(void * pvParameter)
+void tsl2561_direct_task(void * pvParameter)
 {
     i2c_master_init();
 
@@ -126,6 +127,26 @@ void tsl2561_task(void * pvParameter)
         ESP_ERROR_CHECK(smbus_write_byte(smbus_info, REG_CONTROL | SMB_COMMAND, 0x00));  // power down
         vTaskDelay(2000 / portTICK_RATE_MS);
     }
+}
+
+void tsl2561_task(void * pvParameter)
+{
+    i2c_master_init();
+
+    i2c_port_t i2c_num = I2C_MASTER_NUM;
+    uint8_t address = CONFIG_TSL2561_I2C_ADDRESS;
+
+    // Set up the SMBus
+    smbus_info_t * smbus_info = smbus_malloc();
+    smbus_init(smbus_info, i2c_num, address);
+    smbus_set_timeout(smbus_info, 1000 / portTICK_RATE_MS);
+
+    // Set up the TSL2561 device
+    tsl2561_info_t * tsl2561_info = tsl2561_malloc();
+    tsl2561_init(tsl2561_info, smbus_info);
+
+    while (1)
+        ;
 }
 
 void test_smbus_task(void * pvParameter)
@@ -260,7 +281,9 @@ void app_main()
     gpio_pad_select_gpio(BLUE_LED_GPIO);
     gpio_set_direction(BLUE_LED_GPIO, GPIO_MODE_OUTPUT);
 
-//    xTaskCreate(&tsl2561_task, "tsl2561_task", 2048, NULL, 5, NULL);
-    xTaskCreate(&test_smbus_task, "test_smbus_task", 2048, NULL, 5, NULL);
+//    xTaskCreate(&tsl2561_direct_task, "tsl2561_direct_task", 2048, NULL, 5, NULL);
+    xTaskCreate(&tsl2561_task, "tsl2561_task", 2048, NULL, 5, NULL);
+
+//    xTaskCreate(&test_smbus_task, "test_smbus_task", 2048, NULL, 5, NULL);
 }
 
