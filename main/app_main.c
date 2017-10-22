@@ -145,8 +145,22 @@ void tsl2561_task(void * pvParameter)
     tsl2561_info_t * tsl2561_info = tsl2561_malloc();
     tsl2561_init(tsl2561_info, smbus_info);
 
+    tsl2561_set_integration_time_and_gain(tsl2561_info, TSL2561_INTEGRATION_TIME_402MS, TSL2561_GAIN_1X);
+    //tsl2561_set_integration_time_and_gain(tsl2561_info, TSL2561_INTEGRATION_TIME_402MS, TSL2561_GAIN_16X);
+
     while (1)
-        ;
+    {
+        tsl2561_visible_t visible = 0;
+        tsl2561_infrared_t infrared = 0;
+        tsl2561_read(tsl2561_info, &visible, &infrared);
+
+        printf("\nFull spectrum: %d\n", visible + infrared);
+        printf("Infrared:      %d\n", infrared);
+        printf("Visible:       %d\n", visible);
+        printf("Lux:           %d\n", tsl2561_compute_lux(tsl2561_info, visible, infrared));
+
+        vTaskDelay(2000 / portTICK_RATE_MS);
+    }
 }
 
 void test_smbus_task(void * pvParameter)
